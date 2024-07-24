@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using System.Text;
 using Hoi4UniversalTranslator.translators;
 
 namespace Hoi4UniversalTranslator.worker
@@ -8,10 +9,8 @@ namespace Hoi4UniversalTranslator.worker
     private const int MaxContentLength = 5000;
     private const int ChunkSize = 1250;
 
-    private static async Task<IEnumerable<(string fileName, string content)>> Read(string input, string mainLang, string toLang)
+    private static async Task ReadAndTranslateAndSave(string input, string output, string mainLang, string toLang)
     {
-      var translatedContents = new List<(string fileName, string content)>();
-
       try
       {
         Console.WriteLine($"DEBUG | Reading files from directory: {input}");
@@ -20,7 +19,7 @@ namespace Hoi4UniversalTranslator.worker
         var files = Directory.GetFiles(input, "*.yml");
         Console.WriteLine($"DEBUG | Found {files.Length} .yml files");
 
-        // Create tasks for reading and translating each file
+        // Create tasks for reading, translating, and saving each file
         var translationTasks = files.Select(async filePath =>
         {
           // Read file content asynchronously
@@ -40,56 +39,59 @@ namespace Hoi4UniversalTranslator.worker
           }
 
           // Translate content
-          var translatedContent = TranslateContent(mainLang, toLang, content);
+          var translatedContent = await TranslateContent(mainLang, toLang, content);
           Console.WriteLine($"DEBUG | Translated content for file: {filePath}");
 
-          // Return translated content along with the original file name
-          return (fileName: Path.GetFileName(filePath), content: translatedContent);
+          // Write translated content to output file immediately
+          var outputPath = Path.Combine(output, Path.GetFileName(filePath));
+          await File.WriteAllTextAsync(outputPath, translatedContent);
+          Console.WriteLine($"DEBUG | Written file: {outputPath}");
         });
 
-        // Wait for all translation tasks to complete
-        translatedContents.AddRange(await Task.WhenAll(translationTasks));
+        // Wait for all tasks to complete
+        await Task.WhenAll(translationTasks);
       }
       catch (IOException e)
       {
         Console.WriteLine($"ERROR | {e.Message}");
-        translatedContents.Add(("ERROR", e.Message));
       }
-
-      return translatedContents;
     }
 
-    private static string TranslateContent(string mainLang, string toLang, string content)
+    private static async Task<string> TranslateContent(string mainLang, string toLang, string content)
     {
       var stringPattern = "\"(.*?)\"";
       var matches = Regex.Matches(content, stringPattern);
 
-      Parallel.ForEach(matches.Cast<Match>(), match =>
+      // Using StringBuilder for efficient string manipulation
+      var sb = new StringBuilder(content);
+      var translations = new Dictionary<string, string>();
+
+      // Collect all matches and their translations
+      foreach (Match match in matches)
       {
         var originalText = match.Groups[1].Value;
-        var translatedText = Google.Translate(mainLang, toLang, originalText).Result;
-        content = content.Replace(originalText, translatedText);
-      });
-
-      return content;
-    }
-
-    private static async Task Write(string output, IEnumerable<(string fileName, string content)> translatedContents)
-    {
-      try
-      {
-        Console.WriteLine($"DEBUG | Writing files to directory: {output}");
-        foreach (var (fileName, content) in translatedContents)
+        if (!translations.ContainsKey(originalText) && !string.IsNullOrEmpty(originalText))
         {
-          var outputPath = Path.Combine(output, fileName);
-          await File.WriteAllTextAsync(outputPath, content);
-          Console.WriteLine($"DEBUG | Written file: {outputPath}");
+          try
+          {
+            var translatedText = await Google.Translate(mainLang, toLang, originalText);
+            translations[originalText] = translatedText;
+          }
+          catch (Exception ex)
+          {
+            Console.WriteLine($"ERROR | Translation failed for '{originalText}': {ex.Message}");
+            translations[originalText] = originalText; // Fallback to original text if translation fails
+          }
         }
       }
-      catch (IOException e)
+
+      // Replace each original text with its translation
+      foreach (var pair in translations)
       {
-        Console.WriteLine($"ERROR | {e.Message}");
+        sb.Replace(pair.Key, pair.Value);
       }
+
+      return sb.ToString();
     }
 
     public static async Task ReadAndWriteFiles(string output, string input, string mainLang, string toLang)
@@ -106,16 +108,8 @@ namespace Hoi4UniversalTranslator.worker
         Directory.CreateDirectory(output);
       }
 
-      // Read and Write File
-      try
-      {
-        var translatedContents = await Read(input, mainLang, toLang);
-        await Write(output, translatedContents);
-      }
-      catch (IOException e)
-      {
-        Console.WriteLine($"ERROR | {e.Message}");
-      }
+      // Read, Translate and Write File
+      await ReadAndTranslateAndSave(input, output, mainLang, toLang);
     }
   }
 }
