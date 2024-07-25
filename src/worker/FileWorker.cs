@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using System.Text;
 using Hoi4UniversalTranslator.translators;
+using System.Collections.Concurrent;
 
 namespace Hoi4UniversalTranslator.worker
 {
@@ -13,28 +14,17 @@ namespace Hoi4UniversalTranslator.worker
     {
       try
       {
-        Console.WriteLine($"DEBUG | Reading files from directory: {input}");
-
-        // Get all .yml files in the directory
         var files = Directory.GetFiles(input, "*.yml");
-        Console.WriteLine($"DEBUG | Found {files.Length} .yml files");
-
-        // Create tasks for reading, translating, and saving each file
         var translationTasks = files.Select(async filePath =>
         {
           // Read file content asynchronously
           var content = await File.ReadAllTextAsync(filePath);
           Console.WriteLine($"DEBUG | Read content from file: {filePath}");
 
-          // Truncate content to MaxContentLength characters
+          // Truncate content to MaxContentLength characters if necessary
           if (content.Length > MaxContentLength)
           {
-            var chunks = new List<string>();
-            for (int i = 0; i < content.Length; i += ChunkSize)
-            {
-              chunks.Add(content.Substring(i, Math.Min(ChunkSize, content.Length - i)));
-            }
-            content = string.Join("", chunks);
+            content = content.Substring(0, MaxContentLength);
             Console.WriteLine($"DEBUG | Content truncated to {MaxContentLength} characters");
           }
 
@@ -42,7 +32,7 @@ namespace Hoi4UniversalTranslator.worker
           var translatedContent = await TranslateContent(mainLang, toLang, content);
           Console.WriteLine($"DEBUG | Translated content for file: {filePath}");
 
-          // Write translated content to output file immediately
+          // Write translated content to output file asynchronously
           var outputPath = Path.Combine(output, Path.GetFileName(filePath));
           await File.WriteAllTextAsync(outputPath, translatedContent);
           Console.WriteLine($"DEBUG | Written file: {outputPath}");
@@ -51,9 +41,9 @@ namespace Hoi4UniversalTranslator.worker
         // Wait for all tasks to complete
         await Task.WhenAll(translationTasks);
       }
-      catch (IOException e)
+      catch (Exception ex)
       {
-        Console.WriteLine($"ERROR | {e.Message}");
+        Console.WriteLine($"ERROR | Failed to read, translate or save files: {ex.Message}");
       }
     }
 
@@ -64,26 +54,40 @@ namespace Hoi4UniversalTranslator.worker
 
       // Using StringBuilder for efficient string manipulation
       var sb = new StringBuilder(content);
-      var translations = new Dictionary<string, string>();
+      var translations = new ConcurrentDictionary<string, string>();
 
-      // Collect all matches and their translations
-      foreach (Match match in matches)
-      {
-        var originalText = match.Groups[1].Value;
-        if (!translations.ContainsKey(originalText) && !string.IsNullOrEmpty(originalText))
-        {
-          try
+      // Define the maximum number of retry attempts
+      int maxRetries = 5;
+
+      // Collect all matches and their translations in parallel
+      var translationTasks = matches
+          .Cast<Match>()
+          .Select(async match =>
           {
-            var translatedText = await Google.Translate(mainLang, toLang, originalText);
-            translations[originalText] = translatedText;
-          }
-          catch (Exception ex)
-          {
-            Console.WriteLine($"ERROR | Translation failed for '{originalText}': {ex.Message}");
-            translations[originalText] = originalText; // Fallback to original text if translation fails
-          }
-        }
-      }
+            var originalText = match.Groups[1].Value;
+            if (!translations.ContainsKey(originalText) && !string.IsNullOrEmpty(originalText))
+            {
+              for (int attempt = 0; attempt < maxRetries; attempt++)
+              {
+                try
+                {
+                  var translatedText = await Google.Translate(mainLang, toLang, originalText).ConfigureAwait(false);
+                  translations[originalText] = translatedText;
+                  break; // Exit the retry loop on success
+                }
+                catch (Exception ex)
+                {
+                  Console.WriteLine($"ERROR | Translation failed for '{originalText}' on attempt {attempt + 1}: {ex.Message}");
+                  if (attempt == maxRetries - 1)
+                  {
+                    translations[originalText] = originalText; // Fallback to original text after max retries
+                  }
+                }
+              }
+            }
+          });
+
+      await Task.WhenAll(translationTasks).ConfigureAwait(false);
 
       // Replace each original text with its translation
       foreach (var pair in translations)
@@ -96,20 +100,27 @@ namespace Hoi4UniversalTranslator.worker
 
     public static async Task ReadAndWriteFiles(string output, string input, string mainLang, string toLang)
     {
-      // Verify for Folders
-      if (!Directory.Exists(input))
+      try
       {
-        Console.WriteLine($"DEBUG | Input directory does not exist. Creating: {input}");
-        Directory.CreateDirectory(input);
-      }
-      if (!Directory.Exists(output))
-      {
-        Console.WriteLine($"DEBUG | Output directory does not exist. Creating: {output}");
-        Directory.CreateDirectory(output);
-      }
+        // Verify and create directories if they don't exist
+        if (!Directory.Exists(input))
+        {
+          Console.WriteLine($"DEBUG | Input directory does not exist. Creating: {input}");
+          Directory.CreateDirectory(input);
+        }
+        if (!Directory.Exists(output))
+        {
+          Console.WriteLine($"DEBUG | Output directory does not exist. Creating: {output}");
+          Directory.CreateDirectory(output);
+        }
 
-      // Read, Translate and Write File
-      await ReadAndTranslateAndSave(input, output, mainLang, toLang);
+        // Read, Translate and Write Files
+        await ReadAndTranslateAndSave(input, output, mainLang, toLang);
+      }
+      catch (Exception ex)
+      {
+        Console.WriteLine($"ERROR | Failed to process directories or files: {ex.Message}");
+      }
     }
   }
 }

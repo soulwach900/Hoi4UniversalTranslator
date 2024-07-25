@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
+using Hoi4UniversalTranslator.worker;
 
-namespace Hoi4UniversalTranslator.worker
+namespace Hoi4UniversalTranslator
 {
   class Program
   {

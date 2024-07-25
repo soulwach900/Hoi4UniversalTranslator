@@ -11,23 +11,27 @@ The **Hoi4UniversalTranslator** is a command-line interface (CLI) tool designed 
 
 ## Installation From Source
 
+### You Need .NET SDK 8.0 To Build Then
+
 1. **Clone the repository:**
 
    ```bash
    git clone https://github.com/soulwach900/Hoi4UniversalTranslator.git
    ```
 
-   ```
+   ```bash
    cd "Hoi4UniversalTranslator"
    ```
 
-   ```
+2. **Build Project:**
+
+   ```bash
    dotnet build
    ```
 
-2. **Running:**
+3. **Running:**
 
-   ```
+   ```bash
    dotnet run
    ```
 
