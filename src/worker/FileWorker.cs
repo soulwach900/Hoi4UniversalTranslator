@@ -7,52 +7,69 @@ namespace Hoi4UniversalTranslator.worker
 {
     class FileWorker
     {
-        private const int MaxContentLength = 5000;
-
         private static async Task ReadAndTranslateAndSave(string input, string output, string mainLang, string toLang)
         {
             try
             {
                 var files = Directory.GetFiles(input, "*.yml");
-                List<FileStream> fileStreams = new List<FileStream>();
 
                 var translationTasks = files.Select(async filePath =>
                 {
-                    FileStream fs = new FileStream(filePath, FileMode.Open, FileAccess.Read);
-                    fileStreams.Add(fs);
-                    var ChunkSize = 1250;
-                    byte[] buffer = new byte[ChunkSize];
-                    StringBuilder contentBuilder = new StringBuilder();
-
-                    int bytesRead;
-                    while ((bytesRead = await fs.ReadAsync(buffer, 0, ChunkSize)) > 0)
+                    using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read))
                     {
-                        contentBuilder.Append(Encoding.UTF8.GetString(buffer, 0, bytesRead));
+                        const int ChunkSize = 1250;
+                        var buffer = new byte[ChunkSize];
+                        var contentBuilder = new StringBuilder();
+
+                        int bytesRead;
+                        while ((bytesRead = await fs.ReadAsync(buffer, 0, ChunkSize)) > 0)
+                        {
+                            contentBuilder.Append(Encoding.UTF8.GetString(buffer, 0, bytesRead));
+                        }
+
+                        string content = contentBuilder.ToString();
+
+                        Console.BackgroundColor = ConsoleColor.DarkBlue;
+                        Console.WriteLine($"DEBUG | Read content from file: {filePath}");
+
+                        if (content.Length > 5000)
+                        {
+                            Console.BackgroundColor = ConsoleColor.DarkYellow;
+                            Console.WriteLine($"DEBUG | Content length exceeds 5000 characters. Splitting for translation.");
+
+                            var chunkTasks = new List<Task<string>>();
+                            for (int i = 0; i < content.Length; i += ChunkSize)
+                            {
+                                var chunkLength = Math.Min(ChunkSize, content.Length - i);
+                                var chunk = content.Substring(i, chunkLength);
+                                chunkTasks.Add(TranslateContent(mainLang, toLang, chunk));
+                            }
+
+                            var translatedChunks = await Task.WhenAll(chunkTasks);
+                            var translatedContent = string.Join("", translatedChunks);
+
+                            Console.BackgroundColor = ConsoleColor.DarkGreen;
+                            Console.WriteLine($"DEBUG | Translated content for file: {filePath}");
+
+                            var outputPath = Path.Combine(output, Path.GetFileName(filePath));
+                            await File.WriteAllTextAsync(outputPath, translatedContent);
+                            Console.BackgroundColor = ConsoleColor.DarkGreen;
+                            Console.WriteLine($"DEBUG | Written file: {outputPath}");
+                        }
+                        else
+                        {
+                            // If content is within the 5000 character limit
+                            var translatedContent = await TranslateContent(mainLang, toLang, content);
+
+                            Console.BackgroundColor = ConsoleColor.DarkGreen;
+                            Console.WriteLine($"DEBUG | Translated content for file: {filePath}");
+
+                            var outputPath = Path.Combine(output, Path.GetFileName(filePath));
+                            await File.WriteAllTextAsync(outputPath, translatedContent);
+                            Console.BackgroundColor = ConsoleColor.DarkGreen;
+                            Console.WriteLine($"DEBUG | Written file: {outputPath}");
+                        }
                     }
-
-                    fs.Close();
-                    string content = contentBuilder.ToString();
-
-                    Console.BackgroundColor = ConsoleColor.DarkBlue;
-                    Console.WriteLine($"DEBUG | Read content from file: {filePath}");
-
-                    if (content.Length > MaxContentLength)
-                    {
-                        content = content.Substring(0, MaxContentLength);
-                        Console.BackgroundColor = ConsoleColor.DarkYellow;
-                        Console.WriteLine($"DEBUG | Content truncated to {MaxContentLength} characters");
-                    }
-
-                    // Translate content
-                    var translatedContent = await TranslateContent(mainLang, toLang, content);
-                    Console.BackgroundColor = ConsoleColor.DarkGreen;
-                    Console.WriteLine($"DEBUG | Translated content for file: {filePath}");
-
-                    // Write translated content to output file asynchronously
-                    var outputPath = Path.Combine(output, Path.GetFileName(filePath));
-                    await File.WriteAllTextAsync(outputPath, translatedContent);
-                    Console.BackgroundColor = ConsoleColor.DarkGreen;
-                    Console.WriteLine($"DEBUG | Written file: {outputPath}");
                 });
 
                 await Task.WhenAll(translationTasks);
@@ -84,23 +101,20 @@ namespace Hoi4UniversalTranslator.worker
                     var originalText = match.Groups[1].Value;
                     if (!translations.ContainsKey(originalText) && !string.IsNullOrEmpty(originalText))
                     {
-                        for (int attempt = 0; attempt < maxRetries; attempt++)
+                        int attempt = 0;
+                        while (attempt < maxRetries)
                         {
                             try
                             {
                                 var translatedText = await Google.Translate(mainLang, toLang, originalText).ConfigureAwait(false);
                                 translations[originalText] = translatedText;
-                                break; // Exit the retry loop on success
+                                break;  // Exit the loop on success
                             }
                             catch (Exception ex)
                             {
-                                Console.BackgroundColor = ConsoleColor.DarkRed;
-                                Console.WriteLine($"ERROR | Translation failed for '{originalText}' on attempt {attempt + 1}: {ex.Message}");
-                                if (attempt == maxRetries - 1)
-                                {
-                                    translations[originalText] = originalText; // Fallback to original text after max retries
-                                }
+                                Console.Write(ex.Message);
                             }
+                            attempt++;
                         }
                     }
                 });

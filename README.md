@@ -44,7 +44,9 @@ Open **config.json** and change the **"ToLang"** line to your language
 there are specific color characters, fonts etc... that may break the game interface so it is not guaranteed that it will work 100%
 
 ## Change Log
-- 0.1A  : Much Faster Translation, Added In Output Colors
+
+- 0.1A : Much Faster Translation, Added In Output Colors
+- 0.2A : Fixed the Translation Not Showing Up
 
 ## Coming Soon
 
