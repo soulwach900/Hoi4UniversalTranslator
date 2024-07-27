@@ -35,11 +35,19 @@ The **Hoi4UniversalTranslator** is a command-line interface (CLI) tool designed 
    dotnet run
    ```
 
+## How to Change the Translation Language?
+
+Open **config.json** and change the **"ToLang"** line to your language
+
 ## Broken Interface
 
 there are specific color characters, fonts etc... that may break the game interface so it is not guaranteed that it will work 100%
 
+## Change Log
+- 0.1A  : Much Faster Translation, Added In Output Colors
+
 ## Coming Soon
 
-- [] Fix All paradox Codes
-- [] Create a Gui
+- [ ] Fix All paradox Codes
+- [ ] Create a Gui
+- [ ] Progress Bar / Improve Output ( CLI )
