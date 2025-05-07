@@ -11,7 +11,7 @@ The **Hoi4UniversalTranslator** is a command-line interface (CLI) tool designed 
 
 ## Installation From Source
 
-### You Need .NET SDK 8.0 To Build Then
+### You Need .NET SDK 9.0 To Build Then
 
 1. **Clone the repository:**
 
@@ -35,10 +35,6 @@ The **Hoi4UniversalTranslator** is a command-line interface (CLI) tool designed 
    dotnet run
    ```
 
-## How to Change the Translation Language?
-
-Open **config.json** and change the **"ToLang"** line to your language
-
 ## Broken Interface
 
 there are specific color characters, fonts etc... that may break the game interface so it is not guaranteed that it will work 100%
@@ -47,9 +43,10 @@ there are specific color characters, fonts etc... that may break the game interf
 
 - 0.1A : Much Faster Translation, Added In Output Colors
 - 0.2A : Fixed the Translation Not Showing Up
+- 0.3A : Complete Code Rewritten
 
 ## Coming Soon
 
 - [ ] Fix All paradox Codes
 - [ ] Create a Gui
-- [ ] Progress Bar / Improve Output ( CLI )
+- [ ✅ ] Progress Bar / Improve Output ( CLI )
